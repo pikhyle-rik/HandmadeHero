@@ -2,4 +2,6 @@
 subst w: C:\Users\mason\Documents\Development\HandmadeHero
 call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 
-set path=w:\misc;"C:\Program Files (x86)\Vim\vim81\";%path%
+set path=w:\misc;"C:\Program Files (x86)\Vim\vim81\";"C:\Program Files\mingw-w64\x86_64-8.1.0-posix-seh-rt_v6-rev0\mingw64\bin";%path%
+w:
+cd code
