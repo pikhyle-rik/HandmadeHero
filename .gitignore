@@ -1,4 +1,4 @@
-ompiled source #
+# Compiled source #
 
 ###################
 
@@ -21,6 +21,8 @@ ompiled source #
 *.pdb
 
 *.un
+
+.*~
 
 # Packages #
 
