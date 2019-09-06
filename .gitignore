@@ -20,7 +20,7 @@ ompiled source #
 
 *.pdb
 
-*.*~
+*.un
 
 # Packages #
 
