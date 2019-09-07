@@ -12,6 +12,9 @@
 #define internal static
 #define local_persist static
 #define global_variable static
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
+
 
 /***********************************
  *                                 *
@@ -29,6 +32,8 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
+typedef X_INPUT_GET_STATE(x_input_get_state);
+typedef X_INPUT_SET_STATE(x_input_set_state);
 /***********************************
  *                                 *
  *       Struct Definitions        *
@@ -51,11 +56,6 @@ struct win32_window_dimension
     int Height;
 };
 
-#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
-#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
-typedef X_INPUT_GET_STATE(x_input_get_state);
-typedef X_INPUT_SET_STATE(x_input_set_state);
-
 X_INPUT_GET_STATE(XInputGetStateStub)
 {
     return(0);
@@ -76,7 +76,7 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
 
 internal void Win32LoadXInput(void)
 {
-    HMODULE XInputLibrary = LoadLibrary("xinput1_3.dll");
+    HMODULE XInputLibrary = LoadLibrary("xinput1_4.dll");
     if(XInputLibrary)
     {
         XInputGetState = (x_input_get_state *)GetProcAddress(XInputLibrary, "XInputGetState");
@@ -365,15 +365,28 @@ int CALLBACK WinMain(HINSTANCE Instance,
                             {
                                 YOffset -= 2;
                             }
+                            if(LeftShoulder)
+                            {
+                                ++XOffset;
+                            }
+                            if(RightShoulder)
+                            {
+                                --XOffset;
+                            }
+                            if(Back)
+                            {
+                                Running = false;
+                            }
                         }
                         else
                         {
+                            OutputDebugStringA("No Controller Detected");
                             // NOTE: Controller no available
                         }
                     }
                     XINPUT_VIBRATION Vibration;
-                    Vibration.wLeftMotorSpeed = 60000;
-                    Vibration.wRightMotorSpeed = 60000;
+                    Vibration.wLeftMotorSpeed = 6000;
+                    Vibration.wRightMotorSpeed = 6000;
                     XInputSetState(0, &Vibration);
                     RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
 
@@ -381,7 +394,6 @@ int CALLBACK WinMain(HINSTANCE Instance,
                     win32_window_dimension Dimension = Win32GetWindowDimension(Window);
                     Win32DisplayBufferInWindow(DeviceContext, Dimension.Width, Dimension.Height, &GlobalBackbuffer, 0, 0, Dimension.Width, Dimension.Height);
                     ReleaseDC(Window, DeviceContext);
-                    ++XOffset;
                 }
             }
             else
