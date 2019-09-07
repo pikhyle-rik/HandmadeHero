@@ -78,6 +78,7 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 // TODO: This is global for now
 global_variable bool GlobalRunning;
 global_variable win32_offscreen_buffer GlobalBackbuffer;
+global_variable LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 global_variable x_input_get_state *XInputGetState_ = XInputGetStateStub;
 global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define XInputGetState XInputGetState_
@@ -152,9 +153,9 @@ internal void Win32InitDSound(HWND Window, int32 SamplesPerSecond, int32 BufferS
             BufferDescription.dwFlags = 0;
             BufferDescription.dwBufferBytes = BufferSize;
             BufferDescription.lpwfxFormat = &WaveFormat;
-            LPDIRECTSOUNDBUFFER SecondaryBuffer;
-            if(SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDescription, &SecondaryBuffer, 0)))
+            if(SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDescription, &GlobalSecondaryBuffer, 0)))
             {
+
                 OutputDebugStringA("Secondary buffer created successfully!\n");
             }
 
@@ -348,17 +349,13 @@ LRESULT CALLBACK Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WPara
 
         case WM_SETCURSOR:
         {
-            SetCursor(0);
+            //SetCursor(0);
         } break;
 
         case WM_PAINT:
         {
             PAINTSTRUCT Paint;
             HDC DeviceContext = BeginPaint(Window, &Paint);
-            int X = Paint.rcPaint.left;
-            int Y = Paint.rcPaint.top;
-            int Height = Paint.rcPaint.bottom - Paint.rcPaint.top;
-            int Width = Paint.rcPaint.right - Paint.rcPaint.left;
 
             win32_window_dimension Dimension = Win32GetWindowDimension(Window);
 
@@ -388,7 +385,7 @@ int CALLBACK WinMain(HINSTANCE Instance,
 
     WNDCLASS WindowClass = {};
 
-    Win32ResizeDIBSection(&GlobalBackbuffer, 1280, 768);
+    Win32ResizeDIBSection(&GlobalBackbuffer, 640, 480);
     WindowClass.style = CS_HREDRAW|CS_VREDRAW;
     WindowClass.lpfnWndProc = Win32MainWindowCallback;
     WindowClass.hInstance = Instance;
@@ -410,10 +407,21 @@ int CALLBACK WinMain(HINSTANCE Instance,
                       0);
             if(Window)
             {
+                HDC DeviceContext = GetDC(Window);
+                // NOTE: Graphics Test
                 int XOffset = 0;
                 int YOffset = 0;
-
-                Win32InitDSound(Window, 48000, 48000*sizeof(int16)*2);
+                // NOTE: Sound Test
+                int SamplesPerSecond = 48000;              
+                int ToneHz = 256;
+                int16 ToneVolume = 3000;
+                uint32 RunningSampleIndex = 0;
+                int SquareWavePeriod = SamplesPerSecond/ToneHz;
+                int HalfSquareWavePeriod =SquareWavePeriod/2;
+                int BytesPerSample = sizeof(int16)*2;
+                int SecondaryBufferSize = SamplesPerSecond*BytesPerSample;
+                Win32InitDSound(Window, SamplesPerSecond, SecondaryBufferSize);
+                GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
                 GlobalRunning = true;
                 while(GlobalRunning)
                 {
@@ -462,14 +470,10 @@ int CALLBACK WinMain(HINSTANCE Instance,
                             {
                                 YOffset -= 2;
                             }
-                            if(LeftShoulder)
-                            {
-                                
-                            }
-                            if(RightShoulder)
-                            {
-                                
-                            }
+                            
+                            XOffset += StickX >> 12;
+                            YOffset += StickY >> 12;
+
                             if(Back)
                             {
                                 GlobalRunning = false;
@@ -477,20 +481,66 @@ int CALLBACK WinMain(HINSTANCE Instance,
                         }
                         else
                         {
-                            // NOTE: Controller no available
+                            // NOTE: Controller not available
                         }
                     }
-                    XINPUT_VIBRATION Vibration;
-                    Vibration.wLeftMotorSpeed = 3000;
-                    Vibration.wRightMotorSpeed = 3000;
-                    XInputSetState(0, &Vibration);
+                    
                     RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
 
-                    HDC DeviceContext = GetDC(Window);
+                    // NOTE: DirectSound output test
+                    DWORD PlayCursor;
+                    DWORD WriteCursor;
+                    if(SUCCEEDED(GlobalSecondaryBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor)))
+                    {
+                        DWORD ByteToLock = RunningSampleIndex*BytesPerSample % SecondaryBufferSize;
+                        DWORD BytesToWrite;
+                        if(ByteToLock > PlayCursor)
+                        {
+                            BytesToWrite = (SecondaryBufferSize - ByteToLock);
+                            BytesToWrite += PlayCursor;
+                        }
+                        else
+                        {
+                            BytesToWrite = PlayCursor - ByteToLock;
+                        }
+                        VOID *Region1;
+                        DWORD Region1Size;
+                        VOID *Region2;
+                        DWORD Region2Size;
+                        
+                        if(SUCCEEDED(GlobalSecondaryBuffer->Lock(
+                            ByteToLock,
+                            BytesToWrite,
+                            &Region1, &Region1Size,
+                            &Region2, &Region2Size,
+                            0)))
+                        {
+                            // TODO: Assert that Region1Size/Region2Size is valid
+                            // TODO: Collapse these two loops
+                            DWORD Region1SampleCount = Region1Size/BytesPerSample;
+                            int16 *SampleOut = (int16 *)Region1;
+                            for(DWORD SampleIndex = 0; SampleIndex < Region1SampleCount; ++SampleIndex)
+                            {
+                                int16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? ToneVolume : -ToneVolume;
+                                *SampleOut++ = SampleValue;
+                                *SampleOut++ = SampleValue;                  
+                            }
+                            DWORD Region2SampleCount = Region2Size/BytesPerSample;
+                            SampleOut = (int16 *)Region2;
+                            for(DWORD SampleIndex = 0; SampleIndex < Region2SampleCount; ++SampleIndex)
+                            {
+                                int16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ? ToneVolume : -ToneVolume;
+                                *SampleOut++ = SampleValue;
+                                *SampleOut++ = SampleValue;                             
+                            }
+                        }
+                        
+                    }
+                   
+                    
                     win32_window_dimension Dimension = Win32GetWindowDimension(Window);
                     Win32DisplayBufferInWindow(&GlobalBackbuffer, DeviceContext, Dimension.Width, Dimension.Height);
-                    ReleaseDC(Window, DeviceContext);
-                    ++XOffset;
+                    
                 }
             }
             else
