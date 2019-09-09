@@ -1,3 +1,22 @@
+/*
+    THIS IS NOT A FINAL PLATFORM LAYER!!!
+    TODO:
+    - Saved game locations
+    - Getting a handle to our own executable file
+    - Asset loading path
+    - Threading (launch a thread)
+    - Raw input support for multiple keyboards
+    - Sleep/timeBeginPeriod
+    - ClipCuror() (multimonitor support)
+    - Fullscreen support
+    - WM_SETCURSOR (control cursor visability)
+    - QueryCancelAutoplay
+    - WM_ACTIVATEAPP (for when we are not the active application)
+    - Blit speed improvements (bitBlt)
+    - Hardware acceleration
+    - GetKeyboardLayout (for French keyboards, international WASD support)
+    * Just a partial list *
+*/
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -5,13 +24,15 @@
 #include <dsound.h>
 #include <math.h>
 
+//
+
 /***********************************
  *                                 *
  *          Global Defines         *
  *                                 *
  ***********************************/
-
-
+// These defines are now made in handmade.h
+/*
 #define internal static
 #define local_persist static
 #define global_variable static
@@ -19,13 +40,14 @@
 #define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 #define Pi32 3.14159265359f
-
+*/
 /***********************************
  *                                 *
  *        Type Definitions         *
  *                                 *
  ***********************************/
-
+// These definitions are now in handmade.h
+/*
 typedef int8_t int8;
 typedef int16_t int16;
 typedef int32_t int32;
@@ -42,13 +64,13 @@ typedef double real64;
 
 typedef X_INPUT_GET_STATE(x_input_get_state);
 typedef X_INPUT_SET_STATE(x_input_set_state);
-typedef DIRECT_SOUND_CREATE(direct_sound_create);
+typedef DIRECT_SOUND_CREATE(direct_sound_create); */
 /***********************************
  *                                 *
  *       Struct Definitions        *
  *                                 *
  ***********************************/
-
+#include "handmade.cpp"
 struct win32_offscreen_buffer
 {
     BITMAPINFO Info;
@@ -56,7 +78,6 @@ struct win32_offscreen_buffer
     int Width;
     int Height;
     int Pitch;
-    int BytesPerPixel;
 };
 
 struct win32_window_dimension
@@ -197,30 +218,7 @@ internal win32_window_dimension Win32GetWindowDimension(HWND Window)
     return(Result);
 }
 
-internal void RenderWeirdGradient(win32_offscreen_buffer *Buffer, int BlueOffset, int GreenOffset)
-{
-    // TODO: Let's see what the optimizer does
-    uint8 *Row = (uint8 *)Buffer->Memory;
-    for(int Y = 0; Y < Buffer->Height; ++Y)
-    {
-        uint32 *Pixel = (uint32 *)Row;
-        for(int X = 0; X < Buffer->Width; ++X)
-        {
-            // Pixel in memory: RR GG BB xx
-            // LITTLE ENDIAN ARCHITECTURE
-            // LOADS FIRST BYTE IN LOWEST PART OF MEMORY
-            // All windows bitmaps have the pixel in memory as:
-            // BB GG RR xx
-        
-            uint8 Blue = (X + BlueOffset);
-            uint8 Green = (Y + GreenOffset);
-            
 
-            *Pixel++ = ((Green << 8) | Blue);
-        }
-        Row += Buffer->Pitch;
-    }
-}
 
 internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width, int Height)
 {
@@ -505,7 +503,7 @@ int CALLBACK WinMain(HINSTANCE Instance,
                 GlobalRunning = true;   
                 LARGE_INTEGER LastCounter;
                 QueryPerformanceCounter(&LastCounter);
-                int64 LastCycleCount = __rdtsc();
+                uint64 LastCycleCount = __rdtsc();
                 while(GlobalRunning)
                 {
                     
@@ -585,9 +583,12 @@ int CALLBACK WinMain(HINSTANCE Instance,
                             // NOTE: Controller not available
                         }
                     }
-                    
-                    RenderWeirdGradient(&GlobalBackbuffer, XOffset, YOffset);
-
+                    game_offscreen_buffer Buffer = {};
+                    Buffer.Memory = GlobalBackbuffer.Memory;
+                    Buffer.Width = GlobalBackbuffer.Width;
+                    Buffer.Height = GlobalBackbuffer.Height;
+                    Buffer.Pitch = GlobalBackbuffer.Pitch;
+                    GameUpdateAndRender(&Buffer, XOffset, YOffset);
                     // NOTE: DirectSound output test
                     DWORD PlayCursor;
                     DWORD WriteCursor;
@@ -599,8 +600,7 @@ int CALLBACK WinMain(HINSTANCE Instance,
                                                 SoundOutput.SecondaryBufferSize);
                         DWORD BytesToWrite;
 
-                        // TODO: Change this to using a lower latency offset from the play cursor
-                        // when we actually start adding sound effects
+                        
                         if(ByteToLock > TargetCursor)
                         {
                             BytesToWrite = (SoundOutput.SecondaryBufferSize - ByteToLock);
@@ -616,18 +616,22 @@ int CALLBACK WinMain(HINSTANCE Instance,
                     
                     win32_window_dimension Dimension = Win32GetWindowDimension(Window);
                     Win32DisplayBufferInWindow(&GlobalBackbuffer, DeviceContext, Dimension.Width, Dimension.Height);
-                    int64 EndCycleCount = __rdtsc();
+
+                    uint64 EndCycleCount = __rdtsc();
                     LARGE_INTEGER EndCounter;
                     QueryPerformanceCounter(&EndCounter);
-                    int64 CyclesElapsed = EndCycleCount - LastCycleCount;
+
+                    uint64 CyclesElapsed = EndCycleCount - LastCycleCount;
                     int64 CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
-                    int32 MSPerFrame = (int32)(((1000*CounterElapsed) / PerfCountFrequency));
-                    int32 FPS = (PerfCountFrequency / CounterElapsed);
-                    int32 MCPF = (int32)(CyclesElapsed / (1000 * 1000));
-                    real32 ClockSpeed = (real32)((FPS*MCPF)/1000.0f);
-                    char Buffer[256];
-                    sprintf(Buffer, "%dms/f, %df/s, %.02fGHz\n", MSPerFrame, FPS, ClockSpeed);
+                    real64 MSPerFrame = (((1000*(real64)CounterElapsed) / (real64)PerfCountFrequency));
+                    real64 FPS = (real64)PerfCountFrequency / (real64)CounterElapsed;
+                    real64 MCPF = ((real64)CyclesElapsed / (1000 * 1000));
+                    real64 ClockSpeed = (real64)((FPS*MCPF)/1000.0f);
+#if 0
+                    char Buffer[512];
+                    sprintf(Buffer, "%.02fms/f, %.02ff/s, %.02fmc/f, %.02fGHz\n", MSPerFrame, FPS, MCPF, ClockSpeed);
                     OutputDebugStringA(Buffer);
+#endif
                     LastCounter = EndCounter;
                     LastCycleCount = EndCycleCount;
                 }
