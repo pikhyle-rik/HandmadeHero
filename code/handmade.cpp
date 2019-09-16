@@ -47,19 +47,27 @@ RenderWeirdGradient(game_offscreen_buffer *Buffer, int BlueOffset, int GreenOffs
     }
 }
 
+
+
 internal void 
-GameUpdateAndRender(game_input *Input, game_offscreen_buffer *Buffer, game_sound_output_buffer *SoundBuffer)
+GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Buffer, game_sound_output_buffer *SoundBuffer)
 {
-    local_persist int GreenOffset = 0;
-    local_persist int BlueOffset = 0;
-    local_persist int ToneHz = 900;
+    Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
+    
+    game_state *GameState = (game_state *)Memory->PermanentStorage;
+    if(!Memory->IsInitialized)
+    {
+        GameState->ToneHz = 900;
+        
+        Memory->IsInitialized = true;
+    }
 
     game_controller_input *Input0 = &Input->Controllers[0];
     if(Input0->IsAnalog)
     {
         // NOTE: Use analog movement tuning
-        BlueOffset += (int)(4.0f*(Input0->EndX));
-        ToneHz = 900 + (int)(128.0f*(Input0->EndY));
+        GameState->BlueOffset += (int)(4.0f*(Input0->EndX));
+        GameState->ToneHz = 900 + (int)(128.0f*(Input0->EndY));
         
     }
     else
@@ -69,11 +77,11 @@ GameUpdateAndRender(game_input *Input, game_offscreen_buffer *Buffer, game_sound
 
     if(Input0->Down.EndedDown)
     {
-        GreenOffset -= 1;
+        GameState->GreenOffset -= 1;
     }
     if(Input0->Up.EndedDown)
     {
-        GreenOffset += 1;
+        GameState->GreenOffset += 1;
     }
     if(Input0->Back.EndedDown)
     {
@@ -83,6 +91,6 @@ GameUpdateAndRender(game_input *Input, game_offscreen_buffer *Buffer, game_sound
     
 
 	// TODO: Allow sample offsets here for more robust platform options
-	GameOutputSound(SoundBuffer, ToneHz);
-    RenderWeirdGradient(Buffer, BlueOffset, GreenOffset);
+	GameOutputSound(SoundBuffer, GameState->ToneHz);
+    RenderWeirdGradient(Buffer, GameState->BlueOffset, GameState->GreenOffset);
 }
